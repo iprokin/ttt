@@ -9,6 +9,7 @@
 #define file_path_max_length 1000
 
 #define INT_MAX 362880
+#define FLOAT_MAX 362880.0
 
 typedef int Board[m][n];
 
@@ -17,8 +18,7 @@ typedef struct nd {
    Board state; 
    int token; // 1 = x, -1 = o
    int num_childs;
-   int win;
-   //int score;
+   float win;
    struct nd *childs;
 } Node;
 
@@ -132,7 +132,7 @@ goto_childs(Node *node) {
                 node->childs[q].token = -node->token; // players change turns
                 node->childs[q].num_childs = node->num_childs-1;
 
-                node->childs[q].win = whowin(node->childs[q].state);
+                node->childs[q].win = whowin(node->childs[q].state) / ( m*n + 1.0 - node->childs[q].num_childs ); // divided by level
                 goto_childs(&node->childs[q]);
                 q++;
             }
@@ -147,7 +147,7 @@ goto_childs(Node *node) {
 }
 
 void
-go_add_up(Node *node, int value) {
+go_add_up(Node *node, float value) {
     if (node->parent != NULL) {
         node->parent->win += value;
         go_add_up(node->parent, value);
@@ -235,9 +235,9 @@ search_pos(Node *node, Board state_target) {
 
 int
 idofwinnerchild(Node *node) {
-    int winner; // winner is max if token=1, min if token=-1
+    float winner; // winner is max if token=1, min if token=-1
     int i, id_winner;
-    winner = node->token*(-INT_MAX+1);
+    winner = node->token*(-FLOAT_MAX+1);
     
     id_winner = -1; // if not changed in the loop it will produce error later
     for(i = 0; i < node->num_childs; i++) {
@@ -257,7 +257,7 @@ idofwinnerchild(Node *node) {
     return id_winner;
 }
 
-int
+float
 go_down(Node *node) {
     int id_winner;
     if (node->num_childs > 0) {
@@ -268,10 +268,11 @@ go_down(Node *node) {
     }
 }
 
-char convert_to_XO(int val){
-    if (val == -1) {
+char
+convert_to_XO(float val){
+    if (val < 0) {
         return 'O';
-    } else if (val == 1) {
+    } else if (val > 0) {
         return 'X';
     } else {
         return ' ';
@@ -281,7 +282,11 @@ char convert_to_XO(int val){
 void
 print_state(Board state) {
     int i, j;
-    printf("    1   2   3  ");
+    printf(" ");
+    for(j = 1; j < n+1; j ++) {
+        printf("   %i", j);
+    }
+    printf("  ");
     printf("\n  -------------\n");
     for(i = 0; i < m; i++) {
         printf("%c | ", 'a'+i);
@@ -357,6 +362,9 @@ read_input_change_state(Node *root, Node *fndnode) {
         j = atoi(&move[1])-1;
         if (i < 0 || i > m || j < 0 || j > n) {
             print_help();
+        } else if (fndnode->state[i][j] != 0) {
+            printf("This move is unavailable!\n");
+            return read_input_change_state(root, retfndnode);
         } else {
             memcpy(fndstate, fndnode->state, m*n*sizeof(int));
             fndstate[i][j] = fndnode->token;
@@ -395,10 +403,10 @@ main() {
     print_state(root.state);
     printf("Select your token (X/O, default X):\n");
     scanf("%s", tkn);
-    printf("You are playing for %c\n", tkn[0]);
     print_help();
 
     if (tkn[0] == 'O') {
+        printf("You are playing for %c\n", tkn[0]);
         while(1) {
             // make a move
             fndnode = &fndnode->childs[idofwinnerchild(fndnode)];
@@ -412,6 +420,7 @@ main() {
             }
         }
     } else {
+        printf("You are playing for X\n");
         while(1) {
             // wait for move
             fndnode = read_input_change_state(&root, fndnode);
