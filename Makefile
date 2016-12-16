@@ -1,2 +1,4 @@
+GCC=$(shell which musl-gcc >/dev/null && echo "musl-gcc" || echo "gcc")
+
 all:
-	musl-gcc -Os -Wall -std=c99 -pedantic ttt.c -o ttt
+	$(GCC) -Os -Wall -std=c99 -pedantic ttt.c -o ttt
