@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 #define m 3
 #define n 3
@@ -8,8 +9,7 @@
 
 #define file_path_max_length 1000
 
-#define INT_MAX 362880
-#define FLOAT_MAX 362880.0
+#define MAX 362880// * 128// * 2048
 
 typedef int Board[m][n];
 
@@ -18,7 +18,8 @@ typedef struct nd {
    Board state; 
    int token; // 1 = x, -1 = o
    int num_childs;
-   float win;
+   int win;
+   //int score;
    struct nd *childs;
 } Node;
 
@@ -42,15 +43,6 @@ init_arr(int rows, int cols, int arr[rows][cols], int val) {
 int
 check_win_sum(int sum) {
     return sum/k;
-    /*
-    if (sum == k) {
-        return 1;
-    } else if (sum == -k) {
-        return -1;
-    } else {
-        return 0;
-    }
-    */
 }
 
 void
@@ -82,15 +74,11 @@ whowin(int arr[m][n]) {
         for(j = 0; j < n; j++) {
             check_and_add_to_sum(&sum_h, i, k, arr[i][j]);
             check_and_add_to_sum(&sum_v[j], j, k, arr[i][j]);
-            // sum_h += arr[i][j];
-            // sum_v[j] += arr[i][j];
             if (i == j) {
                 check_and_add_to_sum(&sum_dupdown, i, k, arr[i][j]);
-                // sum_dupdown[i] += arr[i][j];
             }
             if ((m-1-i) == j) {
                 check_and_add_to_sum(&sum_ddownup, i, k, arr[i][j]);
-                // sum_ddownup[j] += arr[i][j];
             }
         }
         c = check_win_sum(sum_h);
@@ -132,7 +120,7 @@ goto_childs(Node *node) {
                 node->childs[q].token = -node->token; // players change turns
                 node->childs[q].num_childs = node->num_childs-1;
 
-                node->childs[q].win = whowin(node->childs[q].state) / ( m*n + 1.0 - node->childs[q].num_childs ); // divided by level
+                node->childs[q].win = whowin(node->childs[q].state);
                 goto_childs(&node->childs[q]);
                 q++;
             }
@@ -143,14 +131,7 @@ goto_childs(Node *node) {
         node->childs = NULL;
         terminals.nodes[terminals.num_nodes] = node;
         terminals.num_nodes++;
-    }
-}
-
-void
-go_add_up(Node *node, float value) {
-    if (node->parent != NULL) {
-        node->parent->win += value;
-        go_add_up(node->parent, value);
+        assert( terminals.num_nodes <= MAX );
     }
 }
 
@@ -235,9 +216,9 @@ search_pos(Node *node, Board state_target) {
 
 int
 idofwinnerchild(Node *node) {
-    float winner; // winner is max if token=1, min if token=-1
+    int winner; // winner is max if token=1, min if token=-1
     int i, id_winner;
-    winner = node->token*(-FLOAT_MAX+1);
+    winner = node->token*(-MAX+1);
     
     id_winner = -1; // if not changed in the loop it will produce error later
     for(i = 0; i < node->num_childs; i++) {
@@ -246,18 +227,11 @@ idofwinnerchild(Node *node) {
             winner = node->childs[i].win;
         }
     }
-    /*
-    // is winner is unique?
-    for(i = 0; i < node->num_childs; i++) {
-        if (node->childs[i].win == winner && i != id_winner) {
-            //non unique!
-        }
-    }
-    */
+    assert( id_winner != -1);
     return id_winner;
 }
 
-float
+int
 go_down(Node *node) {
     int id_winner;
     if (node->num_childs > 0) {
@@ -268,11 +242,42 @@ go_down(Node *node) {
     }
 }
 
-char
-convert_to_XO(float val){
-    if (val < 0) {
+void
+go_up_bf(Nodes lastnodes) {
+    int idwin;
+    int i;
+    Nodes layerupnodes;
+    Nodes nodes;
+    Node* node;
+
+    layerupnodes.nodes = malloc(sizeof(Node*)*lastnodes.num_nodes);
+
+    nodes.num_nodes = lastnodes.num_nodes;
+    nodes.nodes = lastnodes.nodes;
+    for(;;) {
+        layerupnodes.num_nodes = 0;
+        for(i = 0; i < nodes.num_nodes; i++) {
+            node = nodes.nodes[i];
+            if (node->parent != NULL) {
+                layerupnodes.nodes[layerupnodes.num_nodes] = node->parent;
+                layerupnodes.num_nodes++;
+                idwin = idofwinnerchild(node->parent);
+                node->parent->win = node->parent->childs[idwin].win;
+            }
+        }
+        if (layerupnodes.num_nodes == 0) {
+            break;
+        } else {
+            nodes.num_nodes = layerupnodes.num_nodes;
+            nodes.nodes = layerupnodes.nodes;
+        }
+    }
+}
+
+char convert_to_XO(int val){
+    if (val == -1) {
         return 'O';
-    } else if (val > 0) {
+    } else if (val == 1) {
         return 'X';
     } else {
         return ' ';
@@ -280,21 +285,32 @@ convert_to_XO(float val){
 }
 
 void
+print_line(const int l) {
+    int j;
+    printf("\n  ");
+    for(j = 0; j < l; j++) {
+        printf("----");
+    }
+    printf("-\n");
+}
+
+void
 print_state(Board state) {
     int i, j;
     printf(" ");
-    for(j = 1; j < n+1; j ++) {
+    for(j = 1; j < n+1; j++) {
         printf("   %i", j);
     }
     printf("  ");
-    printf("\n  -------------\n");
+
+    print_line(n);
     for(i = 0; i < m; i++) {
         printf("%c | ", 'a'+i);
         for(j = 0; j < n-1; j++) {
             printf("%c | ", convert_to_XO(state[i][j]));
         }   
         printf("%c |", convert_to_XO(state[i][n-1]));
-        printf("\n  -------------\n");
+        print_line(n);
     }
 }
 
@@ -376,14 +392,13 @@ read_input_change_state(Node *root, Node *fndnode) {
 
 int
 main() {
-    int i;
     Node root;
     Node *fndnode;
     char tkn[1];
 
     // init tree
     terminals.num_nodes = 0;
-    terminals.nodes = malloc(INT_MAX*sizeof(Node*)); // 9! all possible terminal nodes without wins
+    terminals.nodes = malloc(MAX * sizeof(Node*)); // 9! all possible terminal nodes without wins
     root.parent = NULL;
     init_arr(m, n, root.state, 0);
     root.token = 1;
@@ -393,10 +408,10 @@ main() {
     // build tree
     goto_childs(&root);
     terminals.nodes = realloc(terminals.nodes, sizeof(Node*)*terminals.num_nodes);
+
     // go up and weight nodes
-    for(i = 0; i < terminals.num_nodes; i++) {
-        go_add_up(terminals.nodes[i], terminals.nodes[i]->win);
-    }
+
+    go_up_bf(terminals);
 
     fndnode = &root;
 
